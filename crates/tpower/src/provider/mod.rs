@@ -200,7 +200,11 @@ impl From<(&IORegistry, &SMCPowerData)> for NormalizedResource {
                 efficiency_loss: io
                     .ptd()
                     .map_or(0.0, |d| d.adapter_efficiency_loss as f32 / 1000.),
-                brightness_power: smc.brightness,
+                brightness_power: if is_m1_macbook_air() {
+                    get_estimated_display_power().unwrap_or(0.0)
+                } else {
+                    smc.brightness
+                },
                 heatpipe_power: smc.heatpipe,
                 battery_level: io.current_capacity,
                 absolute_battery_level: io.apple_raw_current_capacity as f32
@@ -326,3 +330,91 @@ impl PowerStatistic {
             .collect()
     }
 }
+
+pub fn get_model_name() -> Option<String> {
+    unsafe {
+        let mut size: libc::size_t = 0;
+        let name = b"hw.model\0";
+        let res = libc::sysctlbyname(
+            name.as_ptr() as *const libc::c_char,
+            std::ptr::null_mut(),
+            &mut size,
+            std::ptr::null_mut(),
+            0
+        );
+        if res != 0 || size == 0 {
+            return None;
+        }
+
+        let mut buf = vec![0u8; size];
+        let res = libc::sysctlbyname(
+            name.as_ptr() as *const libc::c_char,
+            buf.as_mut_ptr() as *mut libc::c_void,
+            &mut size,
+            std::ptr::null_mut(),
+            0
+        );
+        if res != 0 {
+            return None;
+        }
+
+        std::ffi::CStr::from_ptr(buf.as_ptr() as *const libc::c_char)
+            .to_str()
+            .ok()
+            .map(|s| s.to_string())
+    }
+}
+
+pub fn is_m1_macbook_air() -> bool {
+    get_model_name().map_or(false, |m| m == "MacBookAir10,1")
+}
+
+pub type DisplayServicesGetBrightnessFn = unsafe extern "C" fn(u32, *mut f32) -> i32;
+
+pub fn get_estimated_display_power() -> Option<f32> {
+    unsafe {
+        // Load the private DisplayServices framework
+        let path = b"/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices\0";
+        let handle = libc::dlopen(path.as_ptr() as *const libc::c_char, libc::RTLD_LAZY);
+        if handle.is_null() {
+            return None;
+        }
+
+        // Get pointer to DisplayServicesGetBrightness function
+        let sym_name = b"DisplayServicesGetBrightness\0";
+        let sym = libc::dlsym(handle, sym_name.as_ptr() as *const libc::c_char);
+        if sym.is_null() {
+            libc::dlclose(handle);
+            return None;
+        }
+
+        let func: DisplayServicesGetBrightnessFn = std::mem::transmute(sym);
+
+        // Load CoreGraphics dynamically to get CGMainDisplayID
+        let cg_path = b"/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics\0";
+        let cg_handle = libc::dlopen(cg_path.as_ptr() as *const libc::c_char, libc::RTLD_LAZY);
+        let mut display_id = 1;
+        if !cg_handle.is_null() {
+            let cg_sym_name = b"CGMainDisplayID\0";
+            let cg_sym = libc::dlsym(cg_handle, cg_sym_name.as_ptr() as *const libc::c_char);
+            if !cg_sym.is_null() {
+                let cg_func: unsafe extern "C" fn() -> u32 = std::mem::transmute(cg_sym);
+                display_id = cg_func();
+            }
+            libc::dlclose(cg_handle);
+        }
+
+        let mut brightness: f32 = 0.0;
+        let res = func(display_id, &mut brightness);
+        libc::dlclose(handle);
+
+        if res == 0 {
+            // 0.15W panel base + 3.0W backlight scaling
+            Some(0.15 + 3.0 * brightness)
+        } else {
+            None
+        }
+    }
+}
+
+

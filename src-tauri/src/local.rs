@@ -30,7 +30,11 @@ pub fn status_bar_text(
     }
     match status_bar_item {
         StatusBarItem::System => smc.system_total,
-        StatusBarItem::Screen => smc.brightness,
+        StatusBarItem::Screen => if tpower::provider::is_m1_macbook_air() {
+            tpower::provider::get_estimated_display_power().unwrap_or(0.0)
+        } else {
+            smc.brightness
+        },
         StatusBarItem::Heatpipe => smc.heatpipe,
     }
 }
