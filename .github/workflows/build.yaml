@@ -1,5 +1,5 @@
 name: Build App
-on: [workflow_dispatch] # Allows you to trigger it manually
+on: [workflow_dispatch]
 
 jobs:
   build-macos:
@@ -10,7 +10,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22 # Frissítve a figyelmeztetés elkerülése érdekében
 
       - name: Install pnpm
         run: npm install -g pnpm
@@ -30,4 +30,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: powerflow-m4-installer
-          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg # Javított útvonal
