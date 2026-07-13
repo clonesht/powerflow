@@ -1,19 +1,22 @@
 name: Build App
+
 on: [workflow_dispatch]
 
 jobs:
   build-macos:
-    runs-on: macos-latest # This now points to Apple Silicon runners (M1/M2)
+    runs-on: macos-26
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install pnpm
-        run: npm install -g pnpm
+        run: npm install --global pnpm
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -23,12 +26,18 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build Tauri App
-        run: pnpm tauri build --target aarch64-apple-darwin
+      - name: Build Tauri DMG
+        run: pnpm tauri build --target aarch64-apple-darwin --bundles dmg
+
+      - name: Inspect generated bundles
+        if: always()
+        run: |
+          find src-tauri/target -type f \( -name '*.dmg' -o -name '*.app' \) -print
+          find src-tauri/target -type d -name bundle -print
 
       - name: Upload Installer Bundle
         uses: actions/upload-artifact@v4
         with:
           name: powerflow-m4-installer
-          # Use a wildcard to ensure it finds the dmg regardless of the target subfolder
           path: src-tauri/target/**/release/bundle/dmg/*.dmg
+          if-no-files-found: error
