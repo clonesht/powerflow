@@ -3,14 +3,14 @@ on: [workflow_dispatch]
 
 jobs:
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-latest # This now points to Apple Silicon runners (M1/M2)
     steps:
       - uses: actions/checkout@v4
       
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22 # Frissítve a figyelmeztetés elkerülése érdekében
+          node-version: 22
 
       - name: Install pnpm
         run: npm install -g pnpm
@@ -21,7 +21,7 @@ jobs:
           targets: aarch64-apple-darwin
 
       - name: Install Dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build Tauri App
         run: pnpm tauri build --target aarch64-apple-darwin
@@ -30,4 +30,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: powerflow-m4-installer
-          path: src-tauri/target/release/bundle/dmg/*.dmg # Javított útvonal
+          # Use a wildcard to ensure it finds the dmg regardless of the target subfolder
+          path: src-tauri/target/**/release/bundle/dmg/*.dmg
